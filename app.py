@@ -4,23 +4,35 @@ import plotly.graph_objects as go
 import xgboost as xgb
 import numpy as np
 import joblib
+import os
+import urllib.request
+
+# URL for the XGBoost model and label encoder files hosted on GitHub
+model_url = "https://raw.githubusercontent.com/CJKonwar/Crop-recomendation/main/xgboost_model.json"
+label_encoder_url = "https://raw.githubusercontent.com/CJKonwar/Crop-recomendation/main/label_encoder.pkl"
+
+# Define the local file paths where the files will be downloaded
+model_file = "xgboost_model.json"
+label_encoder_file = "label_encoder.pkl"
+
+# Download the XGBoost model
+if not os.path.exists(model_file):
+    urllib.request.urlretrieve(model_url, model_file)
+
+# Download the LabelEncoder
+if not os.path.exists(label_encoder_file):
+    urllib.request.urlretrieve(label_encoder_url, label_encoder_file)
 
 # Load the trained XGBoost model and LabelEncoder
 model = xgb.Booster()
-model.load_model(r"F:\MLPROJECTS\SIH\xgboost_model.json")  # Load the model
-label_encoder = joblib.load(r"F:\MLPROJECTS\SIH\label_encoder.pkl")  # Load label encoder
+model.load_model(model_file)  # Load the model
+label_encoder = joblib.load(label_encoder_file)  # Load label encoder
 
 # Streamlit app title and input form
 st.title("Crop Recommendation System")
 st.write("Provide the following inputs to get crop recommendations")
 
 # Create input fields for the crop features with default values and buttons for adjustment
-def increment_value(value):
-    return value + 1
-
-def decrement_value(value):
-    return max(value - 1, 0)
-
 col1, col2 = st.columns(2)
 
 with col1:
