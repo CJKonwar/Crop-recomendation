@@ -1,88 +1,112 @@
-#Crop-recomendation\backend\app.py
-import streamlit as st
-import pandas as pd
-import plotly.graph_objects as go
-import xgboost as xgb
-import numpy as np
-import joblib
+# backend/app.py
+
 import os
 import urllib.request
+import joblib
+import xgboost as xgb
+import numpy as np
+import pandas as pd
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 
-# URL for the XGBoost model and label encoder files hosted on GitHub
-model_url = "https://raw.githubusercontent.com/CJKonwar/Crop-recomendation/main/xgboost_model.json"
-label_encoder_url = "https://raw.githubusercontent.com/CJKonwar/Crop-recomendation/main/label_encoder.pkl"
+# --- Initialize Flask App ---
+app = Flask(__name__)
+# CORS allows our React frontend to make requests to our Flask backend
+CORS(app)
 
-# Define the local file paths where the files will be downloaded
+# --- Model and Encoder Loading ---
+# URLs for the model and label encoder files
+model_url = "https://raw.githubusercontent.com/CjKonwar/Crop-recomendation/main/backend/xgboost_model.json"
+label_encoder_url = "https://raw.githubusercontent.com/CjKonwar/Crop-recomendation/main/backend/label_encoder.pkl"
+
+# Local file paths
 model_file = "xgboost_model.json"
 label_encoder_file = "label_encoder.pkl"
 
-# Download the XGBoost model
+# Download the XGBoost model if it doesn't exist
 if not os.path.exists(model_file):
+    print("Downloading XGBoost model...")
     urllib.request.urlretrieve(model_url, model_file)
+    print("Model downloaded.")
 
-# Download the LabelEncoder
+# Download the LabelEncoder if it doesn't exist
 if not os.path.exists(label_encoder_file):
+    print("Downloading Label Encoder...")
     urllib.request.urlretrieve(label_encoder_url, label_encoder_file)
+    print("Label Encoder downloaded.")
 
 # Load the trained XGBoost model and LabelEncoder
-model = xgb.Booster()
-model.load_model(model_file)  # Load the model
-label_encoder = joblib.load(label_encoder_file)  # Load label encoder
+try:
+    model = xgb.Booster()
+    model.load_model(model_file)
+    label_encoder = joblib.load(label_encoder_file)
+    print("Model and Label Encoder loaded successfully.")
+except Exception as e:
+    print(f"Error loading model or encoder: {e}")
+    model = None
+    label_encoder = None
 
-# Streamlit app title and input form
-st.title("Crop Recommendation System")
-st.write("Provide the following inputs to get crop recommendations")
-
-# Create input fields for the crop features with default values and buttons for adjustment
-col1, col2 = st.columns(2)
-
-with col1:
-    nitrogen = st.number_input('Nitrogen', min_value=0, max_value=100, value=0, step=1)
-    phosphorus = st.number_input('Phosphorus', min_value=0, max_value=100, value=0, step=1)
-    potassium = st.number_input('Potassium', min_value=0, max_value=100, value=0, step=1)
-    temperature = st.number_input('Temperature (C)', min_value=0, max_value=50, value=0, step=1)
-    humidity = st.number_input('Humidity (%)', min_value=0, max_value=100, value=0, step=1)
-    ph = st.number_input('pH', min_value=0.0, max_value=14.0, value=0.0, step=0.1)
-    rainfall = st.number_input('Rainfall (mm)', min_value=0, max_value=500, value=0, step=1)
-
-# Prepare input data as a pandas DataFrame
-input_data = pd.DataFrame({
-    'N': [nitrogen],
-    'P': [phosphorus],
-    'K': [potassium],
-    'temperature': [temperature],
-    'humidity': [humidity],
-    'ph': [ph],
-    'rainfall': [rainfall]
-})
-
-# Prediction function to get the top 5 crops
+# --- Prediction Logic (from your Streamlit app) ---
 def predict_top_crops(input_data, model, label_encoder):
-    dmatrix = xgb.DMatrix(input_data)  # Convert input data to DMatrix for XGBoost
-    preds = model.predict(dmatrix)  # Predict using the model
-    
-    # If preds has more than one dimension, handle it properly
+    """
+    Predicts the top 5 crops based on input data.
+    """
+    dmatrix = xgb.DMatrix(input_data)  # Convert input data to DMatrix
+    preds = model.predict(dmatrix)  # Predict probabilities
+
+    # Handle multi-dimensional output from prediction
     if preds.ndim > 1:
         preds = preds[0]
-    
-    # Get indices of top 5 predictions (sorted by highest probabilities)
-    top_5_indices = np.argsort(preds)[::-1][:5]  # Get top 5 predictions
-    top_5_crops = label_encoder.inverse_transform(top_5_indices)  # Decode crop names
-    top_5_scores = preds[top_5_indices]  # Get prediction scores for the top 5
-    
-    return top_5_crops, top_5_scores
 
-# When the user clicks the Predict button
-if st.button('Predict Best Crops'):
-    top_crops, top_scores = predict_top_crops(input_data, model, label_encoder)
-    st.write("Top 5 Best-Suited Crops: ", top_crops)
+    # Get indices and scores of the top 5 predictions
+    top_5_indices = np.argsort(preds)[::-1][:5]
+    top_5_crops = label_encoder.inverse_transform(top_5_indices)
+    top_5_scores = preds[top_5_indices]
 
-    # Plot the top 5 crops and their prediction scores using Plotly
-    st.write("Crop Prediction Results")
-    fig = go.Figure(data=[go.Bar(x=top_crops, y=top_scores)])
-    fig.update_layout(
-        title="Top 5 Crop Recommendations",
-        xaxis_title="Crops",
-        yaxis_title="Prediction Score"
-    )
-    st.plotly_chart(fig)
+    # Format the results into a list of dictionaries
+    results = []
+    for crop, score in zip(top_5_crops, top_5_scores):
+        results.append({"crop": crop, "score": float(score)})
+        
+    return results
+
+# --- API Endpoint ---
+@app.route('/predict', methods=['POST'])
+def handle_prediction():
+    """
+    This function is triggered when the frontend sends a POST request to /predict.
+    """
+    if not model or not label_encoder:
+        # Return an error if the model isn't loaded
+        return jsonify({'error': 'Model or encoder not loaded properly.'}), 500
+
+    try:
+        # Get the JSON data sent from the React frontend
+        data = request.get_json(force=True)
+
+        # Convert the incoming JSON data into a pandas DataFrame
+        # The model expects the columns in a specific order.
+        input_data = pd.DataFrame({
+            'N': [data['N']],
+            'P': [data['P']],
+            'K': [data['K']],
+            'temperature': [data['temperature']],
+            'humidity': [data['humidity']],
+            'ph': [data['ph']],
+            'rainfall': [data['rainfall']]
+        })
+
+        # Get the top 5 crop predictions
+        top_crops = predict_top_crops(input_data, model, label_encoder)
+
+        # Return the results as a JSON response
+        return jsonify({'predictions': top_crops})
+
+    except Exception as e:
+        print(f"Error during prediction: {e}")
+        return jsonify({'error': 'An error occurred during prediction.'}), 400
+
+# --- Run the App ---
+if __name__ == '__main__':
+    # Use port 5000 for the backend server
+    app.run(host='0.0.0.0', port=5000, debug=True)
