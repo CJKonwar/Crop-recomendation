@@ -1,3 +1,4 @@
+#Crop-recomendation\backend\requirements.txt
 pip==24.2
 streamlit>=1.0.0
 
