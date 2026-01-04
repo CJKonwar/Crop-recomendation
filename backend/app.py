@@ -1,5 +1,4 @@
 # backend/app.py
-
 import os
 import urllib.request
 import joblib
@@ -16,8 +15,8 @@ CORS(app)
 
 # --- Model and Encoder Loading ---
 # URLs for the model and label encoder files
-model_url = "https://raw.githubusercontent.com/CjKonwar/Crop-recomendation/main/backend/xgboost_model.json"
-label_encoder_url = "https://raw.githubusercontent.com/CjKonwar/Crop-recomendation/main/backend/label_encoder.pkl"
+model_url = "https://raw.githubusercontent.com/CJKonwar/Crop-recomendation/main/xgboost_model.json"
+label_encoder_url = "https://raw.githubusercontent.com/CJKonwar/Crop-recomendation/main/label_encoder.pkl"
 
 # Local file paths
 model_file = "xgboost_model.json"
